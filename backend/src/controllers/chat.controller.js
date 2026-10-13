@@ -75,7 +75,10 @@ export const sendMessage = async (req, res, next) => {
           "- When presenting numerical summaries, metrics, or comparisons, use clean GitHub-flavored Markdown tables.\n" +
           "- Keep tables concise and readable (do not put bullet lists inside table cells).\n" +
           "- Use fenced code blocks with language tags (e.g. ```json, ```javascript) for code or data payloads.\n" +
-          "- Keep paragraphs well-spaced and easy to read.",
+          "- Keep paragraphs well-spaced and easy to read.\n" +
+          "- When asked to run, calculate, execute, debug, or verify code, use the 'run_code' MCP tool by providing the code and language (e.g. javascript, python, java, c, cpp, ruby, go).\n" +
+          "- If code execution returns an error, analyze the error message, correct the code, and call 'run_code' again to verify before answering.\n" +
+          "- Always display the final code and execution output in clean Markdown code blocks."
       },
       ...conversation.messages.map((msg) => ({
         role: msg.role,

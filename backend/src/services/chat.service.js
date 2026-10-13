@@ -21,7 +21,10 @@ const extractToolResult = (result) => {
   }
 
   return result.content
-    .map((item) => item.text || "")
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item.text || JSON.stringify(item);
+    })
     .join("\n");
 };
 
@@ -83,7 +86,7 @@ export const generateAIResponse = async (
 
         // Authentication context is injected by the MCP client, not supplied by the AI.
         const ollamaTools = mcpTools.map((tool) => {
-          const inputSchema = tool.inputSchema;
+          const inputSchema = tool.inputSchema || {};
           const properties = {
             ...(inputSchema.properties || {}),
           };
@@ -99,9 +102,10 @@ export const generateAIResponse = async (
               name: tool.name,
               description: tool.description,
               parameters: {
+                type: "object",
                 ...inputSchema,
                 properties,
-                ...(required ? { required } : {}),
+                ...(required?.length ? { required } : {}),
               },
             },
           };
@@ -207,8 +211,16 @@ export const generateAIResponse = async (
             const toolName =
               toolCall.function.name;
 
-            const toolArguments =
+            let toolArguments =
               toolCall.function.arguments || {};
+
+            if (typeof toolArguments === "string") {
+              try {
+                toolArguments = JSON.parse(toolArguments);
+              } catch (parseErr) {
+                console.error("Failed to parse tool arguments:", toolArguments);
+              }
+            }
 
             console.log(
               "AI requested MCP tool:",
@@ -220,43 +232,56 @@ export const generateAIResponse = async (
               toolArguments
             );
 
-            const result = await tracer.startActiveSpan(
-              "mcp.callTool",
-              async (span) => {
-                try {
-                  span.setAttribute(
-                    "mcp.tool.name",
-                    toolName
-                  );
+            let toolResult;
 
-                  const result = await callMCPTool(
-                    toolName,
-                    toolArguments,
-                    authContext
-                  );
+            try {
+              const result = await tracer.startActiveSpan(
+                "mcp.callTool",
+                async (span) => {
+                  try {
+                    span.setAttribute(
+                      "mcp.tool.name",
+                      toolName
+                    );
 
-                  span.setStatus({
-                    code: SpanStatusCode.OK,
-                  });
+                    const result = await callMCPTool(
+                      toolName,
+                      toolArguments,
+                      authContext
+                    );
 
-                  return result;
-                } catch (error) {
-                  span.recordException(error);
+                    span.setStatus({
+                      code: SpanStatusCode.OK,
+                    });
 
-                  span.setStatus({
-                    code: SpanStatusCode.ERROR,
-                    message: error.message,
-                  });
+                    return result;
+                  } catch (error) {
+                    span.recordException(error);
 
-                  throw error;
-                } finally {
-                  span.end();
+                    span.setStatus({
+                      code: SpanStatusCode.ERROR,
+                      message: error.message,
+                    });
+
+                    throw error;
+                  } finally {
+                    span.end();
+                  }
                 }
-              }
-            );
+              );
 
-            const toolResult =
-              extractToolResult(result);
+              toolResult =
+                extractToolResult(result);
+            } catch (toolError) {
+              console.error(
+                `MCP tool call error (${toolName}):`,
+                toolError.message
+              );
+              toolResult = JSON.stringify({
+                success: false,
+                error: `Tool execution failed: ${toolError.message}`,
+              });
+            }
 
             console.log(
               "MCP result:",
@@ -266,7 +291,7 @@ export const generateAIResponse = async (
             conversationMessages.push({
               role: "tool",
               tool_name: toolName,
-              content: toolResult,
+              content: toolResult || "No output returned from tool.",
             });
           }
         }

@@ -178,4 +178,35 @@ For each result, present their details clearly: name, email, role, and ID.`,
       };
     }
   );
+
+  // ── 6. Run Code in Sandbox ──────────────────────────────
+  server.registerPrompt(
+    "run_code",
+    {
+      title: "Run Code in Sandbox",
+      description:
+        "Run code in a sandboxed environment. Every member can use this tool. Provide the source code and its programming language.",
+      argsSchema: z.object({
+        code: z.string().min(1).describe("The source code to execute"),
+        language: z.enum(["javascript", "python", "java", "c", "cpp", "ruby", "go"]).describe("The programming language of the code"),
+      }),
+    },
+    async ({ code, language }) => {
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Run the following code in a sandboxed environment:
+
+              ${code}
+
+              Language: ${language}`,
+            },
+          },
+        ],
+      };
+    }
+  );
 };

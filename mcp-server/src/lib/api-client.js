@@ -2,7 +2,7 @@ import Axios from "axios";
 
 export const api = Axios.create({
   baseURL: process.env.BACKEND_URL || "http://localhost:5000",
-  timeout: 10000,
+  timeout: 30000,
 });
 
 api.interceptors.request.use((config) => {

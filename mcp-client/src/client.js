@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,10 +8,14 @@ const __filename = fileURLToPath(import.meta.url);
 
 const __dirname = path.dirname(__filename);
 
-const serverPath = path.resolve(
-  __dirname,
-  "../../mcp-server/src/index.js"
-);
+const serverPath = [
+  path.resolve(__dirname, "../../mcp-server/src/index.js"),
+  path.resolve(__dirname, "../../../../mcp-server/src/index.js"),
+].find(existsSync);
+
+if (!serverPath) {
+  throw new Error("Unable to locate mcp-server/src/index.js");
+}
 
 let client = null;
 let connected = false;

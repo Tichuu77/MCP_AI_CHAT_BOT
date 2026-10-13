@@ -14,6 +14,7 @@ export const apiLimiter = rateLimit({
   limit: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => Boolean(req.headers["x-internal-secret"]),
   keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,

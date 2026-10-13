@@ -196,4 +196,35 @@ You do NOT need to ask the user for their userId, organizationId, or role — th
       };
     }
   );
+
+  // ── 4. Available Languages for Sandbox Code Execution ───────────────────────────────
+  server.registerResource(
+    "sandbox_languages",
+    "sandbox://languages",
+    {
+      title: "Sandbox Code Execution Languages",
+      description:
+        "List of programming languages supported for sandboxed code execution",
+      mimeType: "application/json",
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.href || "sandbox://languages",
+            mimeType: "application/json",
+            text: JSON.stringify([
+              { name: "JavaScript", value: "javascript" },
+              { name: "Python", value: "python" },
+              { name: "Ruby", value: "ruby" },
+              { name: "Go", value: "go" },
+              { name: "Java", value: "java" },
+              { name: "C++", value: "cpp" },
+            ]),
+          }
+        ],
+      };
+    }
+  );
 };
+ 

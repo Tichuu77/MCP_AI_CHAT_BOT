@@ -12,6 +12,7 @@ import {
   getMyPermissions,
   getOrganizationSummary,
   getMembersSummary,
+  runCode
 } from "../controllers/mcp.controller.js";
 
 const router = Router();
@@ -42,6 +43,9 @@ router.get("/permissions/organization/members/:userId", getMemberPermissions);
 router.put("/permissions/organization/members/:userId", setMemberPermissions);
 
 router.get("/organization/summary", getOrganizationSummary);
+
+// RUN CODE IN SANDBOX
+router.post("/sandbox/run-code", runCode);
 
 
 export default router;

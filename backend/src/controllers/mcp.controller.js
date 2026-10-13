@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import { PERMISSIONS,DEFAULT_ROLE_PERMISSIONS } from "../config/permissions.js";
 import { requirePermission } from "../services/permission.service.js";
 import RolePermission from "../models/RolePermission.js";
+import { runCodeInSandbox } from "../services/e2b.service.js";
 import {
   getEffectivePermissions,
   updateRolePermissions,
@@ -513,5 +514,100 @@ export const getOrganizationSummary = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+
+// HELPER FUNCTIONS FOR CODE EXECUTION
+const cleanCode = (rawCode = "") => {
+  if (typeof rawCode !== "string") return "";
+  const match = rawCode.match(/^```(?:[a-zA-Z0-9_-]+)?\s*\n?([\s\S]*?)```$/i);
+  return (match ? match[1] : rawCode).trim();
+};
+
+const normalizeLanguage = (lang = "") => {
+  if (typeof lang !== "string") return "";
+  const l = lang.toLowerCase().trim();
+  if (["javascript", "js", "node"].includes(l)) return "javascript";
+  if (["python", "py", "python3"].includes(l)) return "python";
+  if (["cpp", "c++"].includes(l)) return "cpp";
+  if (["golang"].includes(l)) return "go";
+  return l;
+};
+
+// RUN CODE IN SANDBOX
+export const runCode = async (req, res, next) => {
+  try {
+    const context = parseUserContext(req);
+    const codeRequest =
+      req.body?.codeRequest && typeof req.body.codeRequest === "object"
+        ? req.body.codeRequest
+        : req.body || {};
+    const rawCode =
+      codeRequest.code ?? codeRequest.prompt ?? codeRequest.value;
+    const rawLanguage = codeRequest.language ?? req.body?.language;
+
+    console.log("Received code request:", { language: rawLanguage, codeLength: rawCode?.length });
+
+    if (!context) {
+      return res.status(401).json({
+        success: false,
+        message: "Missing x-user-context header",
+      });
+    }
+
+    if (typeof rawCode !== "string" || !rawCode.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid code is required",
+      });
+    }
+
+    const code = cleanCode(rawCode);
+    const language = normalizeLanguage(rawLanguage);
+
+    const supportedLanguages = [
+      "javascript",
+      "python",
+      "java",
+      "c",
+      "cpp",
+      "ruby",
+      "go",
+    ];
+
+    if (!supportedLanguages.includes(language)) {
+      return res.status(400).json({
+        success: false,
+        message: `Language '${rawLanguage}' is not supported. Supported languages: ${supportedLanguages.join(", ")}`,
+      });
+    }
+
+    const result = await runCodeInSandbox(code, language);
+
+    return res.json({
+      success: true,
+      message: result.success
+        ? "Code executed successfully"
+        : "Code execution completed with errors",
+      data: result,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+    return res.status(200).json({
+      success: false,
+      message: error.message || "Failed to execute code in sandbox",
+      data: {
+        success: false,
+        stdout: "",
+        stderr: error.message || "Sandbox execution error",
+        exitCode: -1,
+      },
+    });
   }
 };
