@@ -6,6 +6,7 @@ import conversationRoutes from "./conversation.routes.js";
 import chatRoutes from "./chat.routes.js";
 import permissionRoutes from "./permission.routes.js";
 import mcpRoutes from "./mcp.routes.js";
+import artifactRoutes from "./artifact.routes.js";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/conversations", conversationRoutes);
 router.use("/chats", chatRoutes);
 router.use("/permissions", permissionRoutes);
 router.use("/mcp", mcpRoutes);
+router.use("/artifacts", artifactRoutes);
 
 export default router;

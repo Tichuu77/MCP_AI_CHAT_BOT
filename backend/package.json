@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --import ./src/instrumentation.js --watch src/server.js",
+    "dev": "node --import ./src/instrumentation.js --watch-path=src src/server.js",
     "start": "node --import ./src/instrumentation.js src/server.js"
   },
   "keywords": [],
@@ -18,6 +18,7 @@
     "@opentelemetry/auto-instrumentations-node": "^0.80.0",
     "@opentelemetry/sdk-node": "^0.222.0",
     "ai-chat-mcp-client": "file:../mcp-client",
+    "archiver": "^8.0.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.5",

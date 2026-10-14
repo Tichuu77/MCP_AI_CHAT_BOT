@@ -156,6 +156,9 @@ export const generateAIResponse = async (
         //     });
         //   }
 
+        // Track last code execution result from sandbox if run_code was called
+        let lastExecutionResult = null;
+
         // Allow multiple tool-call rounds
         for (let round = 0; round < 5; round++) {
           console.log(`AI round: ${round + 1}`);
@@ -203,7 +206,13 @@ export const generateAIResponse = async (
 
           // No tool call → final answer
           if (!assistantMessage.tool_calls?.length) {
-            return assistantMessage.content;
+            return {
+              content: assistantMessage.content,
+              lastExecution: lastExecutionResult,
+              toString() {
+                return this.content;
+              },
+            };
           }
 
           // Execute requested MCP tools
@@ -287,6 +296,28 @@ export const generateAIResponse = async (
               "MCP result:",
               toolResult
             );
+
+            // If run_code was invoked, capture execution details
+            if (toolName === "run_code") {
+              try {
+                const parsed =
+                  typeof toolResult === "string"
+                    ? JSON.parse(toolResult)
+                    : toolResult;
+                const execData = parsed?.data || parsed;
+                if (execData && typeof execData.success === "boolean") {
+                  lastExecutionResult = {
+                    success: execData.success,
+                    stdout: execData.stdout || "",
+                    stderr: execData.stderr || "",
+                    exitCode: execData.exitCode ?? (execData.success ? 0 : 1),
+                    ranAt: new Date(),
+                  };
+                }
+              } catch {
+                // Ignore parse errors
+              }
+            }
 
             conversationMessages.push({
               role: "tool",

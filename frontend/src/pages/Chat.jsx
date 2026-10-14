@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { MarkdownMessage } from "../components/MarkdownMessage.jsx";
+import { ArtifactPanel } from "../components/ArtifactPanel.jsx";
 
 const Chat = () => {
   const { conversationId } = useParams();
@@ -11,6 +12,8 @@ const Chat = () => {
   const { user, logout, hasPermission } = useAuth();
   const [conversation, setConversation] = useState(null);
   const [conversations, setConversations] = useState([]);
+  const [artifacts, setArtifacts] = useState([]);
+  const [activeArtifact, setActiveArtifact] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -25,13 +28,24 @@ const Chat = () => {
   const loadConversation = async () => {
     setError("");
     try {
-      const [convRes, listRes] = await Promise.all([
+      const [convRes, listRes, artifactsRes] = await Promise.all([
         api.get(`/conversations/${conversationId}`),
         api.get("/conversations").catch(() => ({ data: { conversations: [] } })),
+        api
+          .get(`/artifacts/conversation/${conversationId}`)
+          .catch(() => ({ data: { data: [] } })),
       ]);
       setConversation(convRes.data.conversation);
       setTitleInput(convRes.data.conversation.title || "");
       setConversations(listRes.data.conversations || []);
+
+      const loadedArtifacts = artifactsRes.data?.data || [];
+      setArtifacts(loadedArtifacts);
+      if (loadedArtifacts.length > 0) {
+        setActiveArtifact(loadedArtifacts[0]);
+      } else {
+        setActiveArtifact(null);
+      }
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -43,6 +57,8 @@ const Chat = () => {
   useEffect(() => {
     setConversation(null);
     setEditingTitle(false);
+    setArtifacts([]);
+    setActiveArtifact(null);
     loadConversation();
   }, [conversationId]);
 
@@ -68,6 +84,19 @@ const Chat = () => {
           { role: "assistant", content: response.data.message },
         ],
       }));
+
+      // If new or updated artifacts were generated, add/update in state & open active panel
+      if (response.data?.artifacts?.length > 0) {
+        const newOrUpdated = response.data.artifacts;
+        setArtifacts((prev) => {
+          const map = new Map(prev.map((a) => [a.identifier, a]));
+          for (const art of newOrUpdated) {
+            map.set(art.identifier, art);
+          }
+          return Array.from(map.values());
+        });
+        setActiveArtifact(newOrUpdated[0]);
+      }
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -163,7 +192,7 @@ const Chat = () => {
   ];
 
   return (
-    <div className="chat-layout">
+    <div className={`chat-layout ${activeArtifact ? "chat-layout-split" : ""}`}>
       <aside className="app-sidebar">
         <div className="sidebar-header">
           <a
@@ -286,6 +315,19 @@ const Chat = () => {
           </div>
 
           <div className="row-actions">
+            {artifacts.length > 0 && (
+              <button
+                type="button"
+                className={`ghost-action-btn ${
+                  activeArtifact ? "ghost-action-btn-active" : ""
+                }`}
+                onClick={() =>
+                  setActiveArtifact(activeArtifact ? null : artifacts[0])
+                }
+              >
+                📁 Artifacts ({artifacts.length})
+              </button>
+            )}
             {canUpdateConversation && !editingTitle && (
               <button
                 type="button"
@@ -309,6 +351,27 @@ const Chat = () => {
             )}
           </div>
         </header>
+
+        {artifacts.length > 0 && (
+          <div className="chat-artifact-bar">
+            <span className="artifact-bar-label">Artifacts:</span>
+            <div className="artifact-bar-chips">
+              {artifacts.map((art) => (
+                <button
+                  key={art._id || art.identifier}
+                  type="button"
+                  className={`artifact-chip ${
+                    activeArtifact?._id === art._id ? "active" : ""
+                  }`}
+                  onClick={() => setActiveArtifact(art)}
+                >
+                  📄 {art.title}{" "}
+                  <span className="artifact-chip-ver">v{art.version}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <section
           className="messages"
@@ -390,6 +453,14 @@ const Chat = () => {
           </form>
         </div>
       </main>
+
+      {/* Claude-style Artifact side panel */}
+      {activeArtifact && (
+        <ArtifactPanel
+          artifact={activeArtifact}
+          onClose={() => setActiveArtifact(null)}
+        />
+      )}
     </div>
   );
 };

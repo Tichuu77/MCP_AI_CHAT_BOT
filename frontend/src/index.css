@@ -1912,3 +1912,330 @@ p {
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================================
+   CLAUDE-STYLE ARTIFACT PANEL & SPLIT LAYOUT
+   ========================================================= */
+
+.chat-layout.chat-layout-split {
+  grid-template-columns: 264px minmax(360px, 1fr) minmax(440px, 50%);
+}
+
+.chat-artifact-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 32px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.artifact-bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.artifact-bar-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.artifact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--line-subtle);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.artifact-chip:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.artifact-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.artifact-chip-ver {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.artifact-chip.active .artifact-chip-ver {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.ghost-action-btn.ghost-action-btn-active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Artifact Panel Container */
+.artifact-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+}
+
+/* Header */
+.artifact-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.artifact-panel-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.artifact-panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifact-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--line-subtle);
+  color: var(--ink-secondary);
+}
+
+.artifact-version-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.artifact-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.artifact-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.artifact-btn:hover {
+  background: var(--line-subtle);
+}
+
+.artifact-btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.artifact-btn-primary:hover {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.artifact-btn-close {
+  padding: 6px 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.artifact-btn-close:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+/* Multi-file Project Tabs */
+.artifact-file-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  background: #1e293b;
+  overflow-x: auto;
+  border-bottom: 1px solid #334155;
+}
+
+.artifact-file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.artifact-file-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+}
+
+.artifact-file-tab.active {
+  background: #334155;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+/* Dependencies Bar */
+.artifact-deps-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: var(--line-subtle);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.artifact-deps-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.artifact-dep-tag {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  padding: 2px 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink-secondary);
+}
+
+/* Code Viewport */
+.artifact-code-viewport {
+  flex: 1;
+  overflow: auto;
+  background: #090d16;
+  padding: 20px;
+}
+
+.artifact-code-pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e2e8f0;
+  white-space: pre;
+}
+
+/* Execution / Test Result Footer */
+.artifact-exec-footer {
+  border-top: 1px solid var(--line);
+  padding: 12px 16px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.artifact-exec-footer.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.artifact-exec-footer.failure {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.artifact-exec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.artifact-exec-log {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+
+/* Responsive Overrides */
+@media (max-width: 1100px) {
+  .chat-layout.chat-layout-split {
+    grid-template-columns: 220px 1fr;
+  }
+
+  .artifact-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 500px;
+    max-width: 90vw;
+    z-index: 100;
+  }
+}

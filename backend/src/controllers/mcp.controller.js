@@ -526,7 +526,7 @@ const cleanCode = (rawCode = "") => {
 };
 
 const normalizeLanguage = (lang = "") => {
-  if (typeof lang !== "string") return "";
+  if (typeof lang !== "string") return "javascript";
   const l = lang.toLowerCase().trim();
   if (["javascript", "js", "node"].includes(l)) return "javascript";
   if (["python", "py", "python3"].includes(l)) return "python";
@@ -539,15 +539,18 @@ const normalizeLanguage = (lang = "") => {
 export const runCode = async (req, res, next) => {
   try {
     const context = parseUserContext(req);
-    const codeRequest =
-      req.body?.codeRequest && typeof req.body.codeRequest === "object"
-        ? req.body.codeRequest
-        : req.body || {};
-    const rawCode =
-      codeRequest.code ?? codeRequest.prompt ?? codeRequest.value;
-    const rawLanguage = codeRequest.language ?? req.body?.language;
+    const body = req.body || {};
+    const codeRequest = body.codeRequest && typeof body.codeRequest === "object"
+      ? body.codeRequest
+      : body;
 
-    console.log("Received code request:", { language: rawLanguage, codeLength: rawCode?.length });
+    const rawCode = codeRequest.code ?? codeRequest.prompt ?? codeRequest.value ?? "";
+    const rawLanguage = codeRequest.language ?? "javascript";
+    const files = codeRequest.files || [];
+    const dependencies = codeRequest.dependencies || [];
+    const commands = codeRequest.commands || [];
+    const keepAlive = Boolean(codeRequest.keepAlive);
+    const sessionId = codeRequest.sessionId || context.conversationId || context.userId;
 
     if (!context) {
       return res.status(401).json({
@@ -556,40 +559,25 @@ export const runCode = async (req, res, next) => {
       });
     }
 
-    if (typeof rawCode !== "string" || !rawCode.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid code is required",
-      });
-    }
-
     const code = cleanCode(rawCode);
     const language = normalizeLanguage(rawLanguage);
 
-    const supportedLanguages = [
-      "javascript",
-      "python",
-      "java",
-      "c",
-      "cpp",
-      "ruby",
-      "go",
-    ];
-
-    if (!supportedLanguages.includes(language)) {
-      return res.status(400).json({
-        success: false,
-        message: `Language '${rawLanguage}' is not supported. Supported languages: ${supportedLanguages.join(", ")}`,
-      });
-    }
-
-    const result = await runCodeInSandbox(code, language);
+    // Call upgraded sandbox service
+    const result = await runCodeInSandbox({
+      code,
+      language,
+      files,
+      dependencies,
+      commands,
+      sessionId,
+      keepAlive,
+    });
 
     return res.json({
       success: true,
       message: result.success
-        ? "Code executed successfully"
-        : "Code execution completed with errors",
+        ? "Execution completed successfully"
+        : "Execution completed with errors",
       data: result,
     });
   } catch (error) {
@@ -601,13 +589,14 @@ export const runCode = async (req, res, next) => {
     }
     return res.status(200).json({
       success: false,
-      message: error.message || "Failed to execute code in sandbox",
+      message: error.message || "Failed to execute in sandbox",
       data: {
         success: false,
         stdout: "",
-        stderr: error.message || "Sandbox execution error",
+        stderr: error.message || "Sandbox error",
         exitCode: -1,
       },
     });
   }
 };
+

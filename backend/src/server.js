@@ -50,13 +50,14 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
-  process.exit(1);
+  console.error("Unhandled Rejection (caught):", err?.message || err);
 });
 
 process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  process.exit(1);
+  console.error("Uncaught Exception (caught):", err?.message || err);
+  if (process.env.NODE_ENV === "production") {
+    process.exit(1);
+  }
 });
 
 startServer();

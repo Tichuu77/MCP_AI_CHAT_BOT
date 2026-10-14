@@ -1,4 +1,8 @@
 export default function errorMiddleware(err, req, res, _next) {
+  if (res.headersSent) {
+    return _next(err);
+  }
+
   const status = err.statusCode || err.status || 500;
   const isProd = process.env.NODE_ENV === "production";
   const isTest = process.env.NODE_ENV === "test";

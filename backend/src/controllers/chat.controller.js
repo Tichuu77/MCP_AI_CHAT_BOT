@@ -4,6 +4,13 @@ import {
   generateAIResponse,
 } from "../services/chat.service.js";
 
+import { parseAIArtifacts } from "../services/artifact-parser.js";
+import {
+  saveOrUpdateArtifact,
+  getConversationArtifacts,
+  formatArtifactsForPrompt,
+} from "../services/artifact.service.js";
+
 export const mcpTest = async (req, res, next) => {
   try {
     const result = await testMCPConnection(req.user);
@@ -27,10 +34,12 @@ export const aiMcpTest = async (req, res, next) => {
     ];
 
     const result = await generateAIResponse(messages, req.user);
+    const messageText =
+      typeof result === "string" ? result : result?.content || "";
 
     return res.json({
       success: true,
-      message: result,
+      message: messageText,
     });
   } catch (error) {
     next(error);
@@ -42,7 +51,7 @@ export const sendMessage = async (req, res, next) => {
     const { conversationId } = req.params;
     const { message } = req.body;
 
-    // Find conversation belonging to this authenticated user + organization
+    // 1. Find conversation belonging to this authenticated user + organization
     const conversation = await Conversation.findOne({
       _id: conversationId,
       organizationId: req.user.organizationId,
@@ -56,29 +65,47 @@ export const sendMessage = async (req, res, next) => {
       });
     }
 
-    // Add user message
+    // 2. Add user message
     conversation.messages.push({
       role: "user",
       content: message.trim(),
     });
 
+    // 3. Fetch any existing artifacts from previous turns or days
+    const activeArtifacts = await getConversationArtifacts(conversation._id);
+    const artifactsPromptContext = formatArtifactsForPrompt(activeArtifacts);
+
+    // 4. Construct system prompt with artifact instructions
+    const systemInstruction =
+      "You are the AI assistant for this workspace. Answer clearly, professionally, and helpfully.\n\n" +
+      "ARTIFACT CREATION GUIDELINES:\n" +
+      "- When asked to write code, build a project, create scripts, or provide files, wrap the code inside an <artifact> tag:\n" +
+      '  <artifact identifier="slug-name" title="Descriptive Title" type="code" language="javascript">\n' +
+      "  ...complete code here...\n" +
+      "  </artifact>\n" +
+      "- For multi-file projects, use nested <file> tags inside the artifact:\n" +
+      '  <artifact identifier="slug-name" title="Project Title" type="project" dependencies="express,jest">\n' +
+      '  <file path="src/index.js" language="javascript">...code...</file>\n' +
+      '  <file path="package.json" language="json">...json...</file>\n' +
+      "  </artifact>\n" +
+      '- When asked to modify, update, or fix an existing artifact, use action="update" with the same identifier:\n' +
+      '  <artifact identifier="existing-slug" action="update">\n' +
+      "  ...complete updated code...\n" +
+      "  </artifact>\n" +
+      "- Do NOT repeat the full code in the chat text outside the <artifact> tag; keep the chat text focused on explanations.\n\n" +
+      "EXECUTION GUIDELINES:\n" +
+      "- Only use 'run_code' for executable backend scripts, algorithms, or calculations (Node.js, Python, Java, C++, Go).\n" +
+      "- NEVER call 'run_code' for frontend browser applications (React, HTML/CSS, client-side localStorage apps); generate them directly as an <artifact>.\n" +
+      "- NEVER call 'run_code' with empty code or files. Always include the complete code and specify the matching 'language'.\n" +
+      "- If backend code execution returns an error, analyze the error, fix the code, and re-run to verify before answering.\n\n" +
+      "FORMATTING GUIDELINES:\n" +
+      "- Format your chat replies with clean Markdown (headers, bullet points, concise tables).\n" +
+      artifactsPromptContext;
+
     const messages = [
       {
         role: "system",
-        content:
-          "You are the AI assistant for this workspace. " +
-          "Answer the user clearly, professionally, and helpfully. " +
-          "When an available tool is needed, use the appropriate MCP tool. " +
-          "For questions about the signed-in user's identity or profile, rely on the result of the get_current_user_info MCP tool.\n\n" +
-          "Formatting guidelines:\n" +
-          "- Format your replies with clean, well-structured Markdown (headers, bold emphasis, clean bullet points).\n" +
-          "- When presenting numerical summaries, metrics, or comparisons, use clean GitHub-flavored Markdown tables.\n" +
-          "- Keep tables concise and readable (do not put bullet lists inside table cells).\n" +
-          "- Use fenced code blocks with language tags (e.g. ```json, ```javascript) for code or data payloads.\n" +
-          "- Keep paragraphs well-spaced and easy to read.\n" +
-          "- When asked to run, calculate, execute, debug, or verify code, use the 'run_code' MCP tool by providing the code and language (e.g. javascript, python, java, c, cpp, ruby, go).\n" +
-          "- If code execution returns an error, analyze the error message, correct the code, and call 'run_code' again to verify before answering.\n" +
-          "- Always display the final code and execution output in clean Markdown code blocks."
+        content: systemInstruction,
       },
       ...conversation.messages.map((msg) => ({
         role: msg.role,
@@ -86,20 +113,42 @@ export const sendMessage = async (req, res, next) => {
       })),
     ];
 
-    // Generate AI response
-    const aiResponse = await generateAIResponse(messages, req.user);
+    // 5. Generate AI response (with multi-round tool calling)
+    const aiResult = await generateAIResponse(messages, req.user);
+    const rawAiResponse =
+      typeof aiResult === "string" ? aiResult : aiResult?.content || "";
+    const lastExecution = aiResult?.lastExecution || null;
 
-    // Save AI response
+    // 6. Parse response to extract any <artifact> tags
+    const { cleanText, artifacts: parsedArtifacts } =
+      parseAIArtifacts(rawAiResponse);
+
+    // 7. Save or update extracted artifacts in MongoDB (with automatic versioning)
+    const savedArtifacts = [];
+    for (const art of parsedArtifacts) {
+      const saved = await saveOrUpdateArtifact({
+        conversationId: conversation._id,
+        userId: req.user.userId,
+        organizationId: req.user.organizationId,
+        artifactData: art,
+        lastExecution,
+      });
+      savedArtifacts.push(saved);
+    }
+
+    // 8. Save clean AI text in conversation history (avoids storing raw XML tags in chat history)
     conversation.messages.push({
       role: "assistant",
-      content: aiResponse,
+      content: cleanText || rawAiResponse,
     });
 
     await conversation.save();
 
+    // 9. Return both chat text and saved artifacts to the client
     return res.json({
       success: true,
-      message: aiResponse,
+      message: cleanText || rawAiResponse,
+      artifacts: savedArtifacts,
       conversationId: conversation._id,
     });
   } catch (error) {
