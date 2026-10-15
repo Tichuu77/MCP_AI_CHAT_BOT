@@ -96,7 +96,10 @@ export const sendMessage = async (req, res, next) => {
       "EXECUTION GUIDELINES:\n" +
       "- Only use 'run_code' for executable backend scripts, algorithms, or calculations (Node.js, Python, Java, C++, Go).\n" +
       "- NEVER call 'run_code' for frontend browser applications (React, HTML/CSS, client-side localStorage apps); generate them directly as an <artifact>.\n" +
-      "- NEVER call 'run_code' with empty code or files. Always include the complete code and specify the matching 'language'.\n" +
+      "- When running or testing projects, put test scripts inside the 'files' parameter (e.g. { path: 'test_script.js', content: '...' }) and run with commands: ['node test_script.js']. NEVER put multi-line code inside bash 'node -e' command strings.\n" +
+      "- For testing Express APIs, require the server (e.g. require('./src/server')) or use 'supertest' to exercise endpoints, print results, and exit with process.exit(0).\n" +
+      "- Always declare all npm packages used by your code or test scripts in 'dependencies' (e.g. ['express', 'cors', 'axios', 'supertest']).\n" +
+      "- NEVER call 'run_code' with empty code or files unless running an existing project entry point.\n" +
       "- If backend code execution returns an error, analyze the error, fix the code, and re-run to verify before answering.\n\n" +
       "FORMATTING GUIDELINES:\n" +
       "- Format your chat replies with clean Markdown (headers, bullet points, concise tables).\n" +
@@ -114,7 +117,11 @@ export const sendMessage = async (req, res, next) => {
     ];
 
     // 5. Generate AI response (with multi-round tool calling)
-    const aiResult = await generateAIResponse(messages, req.user);
+    const authContext = {
+      ...req.user,
+      conversationId: conversation._id.toString(),
+    };
+    const aiResult = await generateAIResponse(messages, authContext);
     const rawAiResponse =
       typeof aiResult === "string" ? aiResult : aiResult?.content || "";
     const lastExecution = aiResult?.lastExecution || null;

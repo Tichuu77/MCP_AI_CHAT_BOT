@@ -1,22 +1,25 @@
 import createSandbox from "../config/e2b.js";
 
 const languageRunners = {
-  javascript: { file: "/tmp/main.js", command: "node /tmp/main.js" },
-  python: { file: "/tmp/main.py", command: "python3 /tmp/main.py" },
+  javascript: {
+    file: "/home/user/main.js",
+    command: "NODE_PATH=/home/user/node_modules node /home/user/main.js",
+  },
+  python: { file: "/home/user/main.py", command: "python3 /home/user/main.py" },
   java: {
-    file: "/tmp/Main.java",
-    command: "javac /tmp/Main.java && java -cp /tmp Main",
+    file: "/home/user/Main.java",
+    command: "javac /home/user/Main.java && java -cp /home/user Main",
   },
   c: {
-    file: "/tmp/main.c",
-    command: "gcc /tmp/main.c -o /tmp/main && /tmp/main",
+    file: "/home/user/main.c",
+    command: "gcc /home/user/main.c -o /home/user/main && /home/user/main",
   },
   cpp: {
-    file: "/tmp/main.cpp",
-    command: "g++ /tmp/main.cpp -o /tmp/main && /tmp/main",
+    file: "/home/user/main.cpp",
+    command: "g++ /home/user/main.cpp -o /home/user/main && /home/user/main",
   },
-  ruby: { file: "/tmp/main.rb", command: "ruby /tmp/main.rb" },
-  go: { file: "/tmp/main.go", command: "go run /tmp/main.go" },
+  ruby: { file: "/home/user/main.rb", command: "ruby /home/user/main.rb" },
+  go: { file: "/home/user/main.go", command: "go run /home/user/main.go" },
 };
 
 // Map of active sandbox sessions: sessionId -> { sandbox, timer, lastUsed }
@@ -109,64 +112,155 @@ export const runCodeInSandbox = async ({
     sandboxObj = res.sandbox;
     isReused = res.isReused;
 
-    // 2. Install dependencies if provided (and not already installed in reused session)
-    if (dependencies && dependencies.length > 0) {
-      const depList = dependencies.join(" ");
+    // 2. Auto-detect packages from code, files, and commands (e.g. axios, supertest)
+    const allCodeText = [
+      code || "",
+      ...(files || []).map((f) => f.content || ""),
+      ...(commands || []),
+    ].join("\n");
+
+    const effectiveDependencies = [...(dependencies || [])];
+    const detectedPackages = [
+      "axios",
+      "supertest",
+      "cors",
+      "dotenv",
+      "bcryptjs",
+      "jsonwebtoken",
+      "mongoose",
+      "express-async-handler",
+      "node-fetch",
+    ];
+
+    for (const pkg of detectedPackages) {
+      if (
+        (allCodeText.includes(`'${pkg}'`) ||
+          allCodeText.includes(`"${pkg}"`) ||
+          allCodeText.includes(`${pkg}.`)) &&
+        !effectiveDependencies.includes(pkg)
+      ) {
+        effectiveDependencies.push(pkg);
+      }
+    }
+
+    if (effectiveDependencies.length > 0) {
+      const depList = effectiveDependencies.join(" ");
       let installCmd = "";
 
       if (["javascript", "typescript"].includes(language)) {
-        installCmd = `npm install --no-audit --no-fund ${depList}`;
+        installCmd = `npm install --no-audit --no-fund --legacy-peer-deps --ignore-engines ${depList}`;
       } else if (language === "python") {
         installCmd = `pip install --quiet ${depList}`;
       }
 
       if (installCmd) {
         console.log(`Installing dependencies in sandbox: ${depList}`);
-        const installRes = await sandboxObj.commands.run(installCmd, {
-          timeoutMs: 45000,
-        });
+        try {
+          const installRes = await sandboxObj.commands.run(installCmd, {
+            timeoutMs: 60000,
+          });
 
-        if (installRes.exitCode !== 0) {
-          console.warn("Dependency install warning:", installRes.stderr);
+          if (installRes.exitCode !== 0) {
+            console.warn("Dependency install warning:", installRes.stderr);
+          }
+        } catch (installErr) {
+          console.warn(
+            "Dependency installation warning/non-zero exit:",
+            installErr.message,
+            installErr.stderr || ""
+          );
         }
       }
     }
 
     // 3. Write files to sandbox
     if (files && files.length > 0) {
+      // Ensure parent directories exist before writing
+      const dirs = new Set();
       for (const f of files) {
-        const filePath = f.path.startsWith("/") ? f.path : `/tmp/${f.path}`;
+        const filePath = f.path.startsWith("/") ? f.path : `/home/user/${f.path}`;
+        const lastSlash = filePath.lastIndexOf("/");
+        if (lastSlash > 0) {
+          dirs.add(filePath.substring(0, lastSlash));
+        }
+      }
+      for (const dir of dirs) {
+        try {
+          await sandboxObj.commands.run(`mkdir -p "${dir}"`);
+        } catch {
+          // Ignore directory creation warnings
+        }
+      }
+
+      for (const f of files) {
+        const filePath = f.path.startsWith("/") ? f.path : `/home/user/${f.path}`;
         await sandboxObj.files.write(filePath, f.content);
       }
-    } else if (hasCode) {
-      // Single-file fallback
+    }
+
+    if (hasCode) {
       const runner = languageRunners[language] || languageRunners.javascript;
       await sandboxObj.files.write(runner.file, code);
     }
 
-    // 4. Determine command(s) to execute
-    const execCommands = [];
+    // 4. Determine command(s) to execute & convert any inline 'node -e' scripts to safe files
+    const rawCommands = [];
     if (commands && commands.length > 0) {
-      execCommands.push(...commands);
+      rawCommands.push(...commands);
+    } else if (hasCode) {
+      const runner = languageRunners[language] || languageRunners.javascript;
+      rawCommands.push(runner.command);
     } else if (hasFiles) {
       const entryFile = files.find((f) =>
         /^(index|main|app|server)\.(js|ts|py|rb|go)$/i.test(f.path) ||
         /^src\/(index|main|app|server)\.(js|ts|py|rb|go)$/i.test(f.path)
       );
       if (entryFile) {
-        const fullEntryPath = entryFile.path.startsWith("/") ? entryFile.path : `/tmp/${entryFile.path}`;
+        const fullEntryPath = entryFile.path.startsWith("/") ? entryFile.path : `/home/user/${entryFile.path}`;
         if (entryFile.path.endsWith(".py")) {
-          execCommands.push(`python3 ${fullEntryPath}`);
+          rawCommands.push(`python3 ${fullEntryPath}`);
         } else {
-          execCommands.push(`node ${fullEntryPath}`);
+          rawCommands.push(`NODE_PATH=/home/user/node_modules node ${fullEntryPath}`);
         }
       } else {
         const runner = languageRunners[language] || languageRunners.javascript;
-        execCommands.push(runner.command);
+        rawCommands.push(runner.command);
       }
     } else {
       const runner = languageRunners[language] || languageRunners.javascript;
-      execCommands.push(runner.command);
+      rawCommands.push(runner.command);
+    }
+
+    const execCommands = [];
+    let inlineCounter = 0;
+
+    for (const cmd of rawCommands) {
+      const trimmed = cmd.trim();
+      if (trimmed.startsWith("node -e ") || trimmed.startsWith('node -e"')) {
+        inlineCounter++;
+        let jsBody = trimmed.replace(/^node\s+-e\s*["']?/, "");
+        // Remove trailing quote if present
+        if (jsBody.endsWith('"') || jsBody.endsWith("'")) {
+          jsBody = jsBody.slice(0, -1);
+        }
+
+        // If the inline script tests endpoints on localhost:5000 and src/server.js exists,
+        // automatically ensure the server is started in the background so HTTP calls succeed
+        if (
+          (jsBody.includes("localhost:") || jsBody.includes("base+'/api") || jsBody.includes("base + '/api")) &&
+          !jsBody.includes("./src/server") &&
+          files &&
+          files.some((f) => f.path.includes("server.js"))
+        ) {
+          jsBody = `try { require('./src/server'); } catch (err) {}\nsetTimeout(async () => {\n${jsBody}\n}, 800);\n`;
+        }
+
+        const inlineFileName = `_inline_test_${inlineCounter}.js`;
+        await sandboxObj.files.write(`/home/user/${inlineFileName}`, jsBody);
+        execCommands.push(`node ${inlineFileName}`);
+      } else {
+        execCommands.push(cmd);
+      }
     }
 
     // 5. Execute commands sequentially
@@ -176,9 +270,13 @@ export const runCodeInSandbox = async ({
     let allSuccess = true;
 
     for (const cmd of execCommands) {
-      console.log(`Running sandbox command: ${cmd}`);
+      const finalCmd =
+        cmd.startsWith("node ") && !cmd.includes("NODE_PATH")
+          ? `NODE_PATH=/home/user/node_modules ${cmd}`
+          : cmd;
+      console.log(`Running sandbox command: ${finalCmd}`);
       try {
-        const result = await sandboxObj.commands.run(cmd, {
+        const result = await sandboxObj.commands.run(finalCmd, {
           timeoutMs: 30000,
         });
 
@@ -215,16 +313,13 @@ export const runCodeInSandbox = async ({
       exitCode: -1,
     };
   } finally {
-    // If not configured to keep session alive, kill sandbox immediately
-    if (!keepAlive && (!sessionId || !isReused)) {
-      if (sessionId) {
-        await destroySandboxSession(sessionId);
-      } else if (sandboxObj) {
-        try {
-          await sandboxObj.kill();
-        } catch (kErr) {
-          console.error("Error killing sandbox:", kErr.message);
-        }
+    // Sessions with a sessionId are cached in activeSandboxes and managed by the 5-minute inactivity timer.
+    // Only kill immediately if there was NO sessionId attached to this execution.
+    if (!sessionId && sandboxObj) {
+      try {
+        await sandboxObj.kill();
+      } catch (kErr) {
+        console.error("Error killing sandbox:", kErr.message);
       }
     }
   }

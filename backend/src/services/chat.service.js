@@ -159,8 +159,8 @@ export const generateAIResponse = async (
         // Track last code execution result from sandbox if run_code was called
         let lastExecutionResult = null;
 
-        // Allow multiple tool-call rounds
-        for (let round = 0; round < 5; round++) {
+        // Allow multiple tool-call rounds (up to 8 to accommodate setup + install + run + verify)
+        for (let round = 0; round < 8; round++) {
           console.log(`AI round: ${round + 1}`);
 
           const response = await tracer.startActiveSpan(
@@ -172,12 +172,32 @@ export const generateAIResponse = async (
                 span.setAttribute("ai.model", MODEL);
                 span.setAttribute("ai.round", round + 1);
 
-                const response = await ollama.chat({
-                  model: MODEL,
-                  messages: conversationMessages,
-                  tools: ollamaTools,
-                  stream: false,
-                });
+                let response;
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                  try {
+                    response = await ollama.chat({
+                      model: MODEL,
+                      messages: conversationMessages,
+                      tools: ollamaTools,
+                      stream: false,
+                    });
+                    break;
+                  } catch (chatErr) {
+                    const isTransient =
+                      chatErr.message?.includes("Internal Server Error") ||
+                      chatErr.status === 500 ||
+                      chatErr.status === 503;
+                    if (isTransient && attempt < 3) {
+                      const backoffMs = attempt * 1500;
+                      console.warn(
+                        `Transient Ollama error on attempt ${attempt} (${chatErr.message}). Retrying in ${backoffMs}ms...`
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+                    } else {
+                      throw chatErr;
+                    }
+                  }
+                }
 
                 span.setStatus({
                   code: SpanStatusCode.OK,

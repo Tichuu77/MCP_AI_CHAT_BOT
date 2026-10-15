@@ -21,11 +21,14 @@ export const registerSandboxTools = (server) => {
           .describe("Programming language (e.g. javascript, python, java, c, cpp, ruby, go)"),
         files: z
           .array(
-            z.object({
-              path: z.string().describe("File path relative to project, e.g. src/index.js"),
-              content: z.string().describe("File content"),
-              language: z.string().optional(),
-            })
+            z.union([
+              z.object({
+                path: z.string().describe("File path relative to project, e.g. src/index.js"),
+                content: z.string().describe("File content"),
+                language: z.string().optional(),
+              }),
+              z.string().describe("File path relative to project"),
+            ])
           )
           .optional()
           .describe("List of files for a multi-file project"),
@@ -46,9 +49,12 @@ export const registerSandboxTools = (server) => {
     tracedToolHandler(
       "mcp.run_code",
       async ({ context, code, language, files, dependencies, commands, keepAlive }) => {
+        const normalizedFiles = (files || []).map((f) =>
+          typeof f === "string" ? { path: f, content: code || "" } : f
+        );
         const response = await api.post(
           "/api/mcp/sandbox/run-code",
-          { code, language, files, dependencies, commands, keepAlive },
+          { code, language, files: normalizedFiles, dependencies, commands, keepAlive },
           {
             headers: { "x-user-context": JSON.stringify(context) },
             timeout: 60000, // 60s timeout for installing packages + running tests

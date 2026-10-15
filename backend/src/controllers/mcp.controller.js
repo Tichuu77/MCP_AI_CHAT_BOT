@@ -4,6 +4,7 @@ import { PERMISSIONS,DEFAULT_ROLE_PERMISSIONS } from "../config/permissions.js";
 import { requirePermission } from "../services/permission.service.js";
 import RolePermission from "../models/RolePermission.js";
 import { runCodeInSandbox } from "../services/e2b.service.js";
+import { getConversationArtifacts } from "../services/artifact.service.js";
 import {
   getEffectivePermissions,
   updateRolePermissions,
@@ -546,7 +547,10 @@ export const runCode = async (req, res, next) => {
 
     const rawCode = codeRequest.code ?? codeRequest.prompt ?? codeRequest.value ?? "";
     const rawLanguage = codeRequest.language ?? "javascript";
-    const files = codeRequest.files || [];
+    const rawFiles = codeRequest.files || [];
+    const files = rawFiles.map((f) =>
+      typeof f === "string" ? { path: f, content: cleanCode(rawCode) } : f
+    );
     const dependencies = codeRequest.dependencies || [];
     const commands = codeRequest.commands || [];
     const keepAlive = Boolean(codeRequest.keepAlive);
@@ -562,12 +566,55 @@ export const runCode = async (req, res, next) => {
     const code = cleanCode(rawCode);
     const language = normalizeLanguage(rawLanguage);
 
+    // If running in a conversation, automatically pre-load files from existing project artifacts
+    const effectiveFiles = [...files];
+    const effectiveDeps = [...dependencies];
+
+    if (context.conversationId) {
+      try {
+        const artifacts = await getConversationArtifacts(context.conversationId);
+        for (const art of artifacts) {
+          if (art.type === "project" && art.files?.length > 0) {
+            for (const af of art.files) {
+              if (!effectiveFiles.some((f) => f.path === af.path)) {
+                effectiveFiles.push({
+                  path: af.path,
+                  content: af.content,
+                  language: af.language,
+                });
+              }
+            }
+          } else if (art.type === "code" && art.content) {
+            const ext = art.language === "python" ? "py" : "js";
+            const artPath = `${art.identifier}.${ext}`;
+            if (!effectiveFiles.some((f) => f.path === artPath)) {
+              effectiveFiles.push({
+                path: artPath,
+                content: art.content,
+                language: art.language,
+              });
+            }
+          }
+
+          if (art.dependencies?.length > 0) {
+            for (const dep of art.dependencies) {
+              if (!effectiveDeps.includes(dep)) {
+                effectiveDeps.push(dep);
+              }
+            }
+          }
+        }
+      } catch (loadErr) {
+        console.warn("Could not load conversation artifacts for sandbox:", loadErr.message);
+      }
+    }
+
     // Call upgraded sandbox service
     const result = await runCodeInSandbox({
       code,
       language,
-      files,
-      dependencies,
+      files: effectiveFiles,
+      dependencies: effectiveDeps,
       commands,
       sessionId,
       keepAlive,
